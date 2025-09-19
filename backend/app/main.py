@@ -8,11 +8,12 @@ from .websockets import manager
 from fastapi import WebSocket, WebSocketDisconnect
 import os
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 # テーブル作成
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="Order System API", version="1.0.0")
+app = FastAPI(title="Order System API", version="1.0.0",docs_url="/null", redoc_url="/null2")
 
 # CORS設定
 app.add_middleware(
@@ -42,9 +43,9 @@ async def websocket_endpoint(websocket: WebSocket):
         manager.disconnect(websocket)
 
 # ルーターのインクルード
-app.include_router(tables.router, prefix="/tables", tags=["tables"])
-app.include_router(menus.router, prefix="/menus", tags=["menus"])
-app.include_router(orders.router, prefix="/orders", tags=["orders"])
+app.include_router(tables.router, prefix="/api/tables", tags=["tables"])
+app.include_router(menus.router, prefix="/api/menus", tags=["menus"])
+app.include_router(orders.router, prefix="/api/orders", tags=["orders"])
 
 @app.get("/health")
 def health_check():
@@ -89,7 +90,12 @@ async def startup_event():
             menus_data = [
                 {"name": "ミートコロッケ", "price": 200, "category": "フード"},
                 {"name": "カレーコロッケ", "price": 200, "category": "フード"},
+                {"name": "カボチャコロッケ", "price": 200, "category": "フード"},
                 {"name": "お茶", "price": 150, "category": "ドリンク"},
+                {"name": "Qoo", "price": 150, "category": "ドリンク"},
+                {"name": "Fanta", "price": 150, "category": "ドリンク"},
+                {"name": "コーラ", "price": 150, "category": "ドリンク"},
+                {"name": "三ツ矢サイダー", "price": 150, "category": "ドリンク"}
             ]
             for m in menus_data:
                 db.add(Menu(**m))
@@ -102,4 +108,5 @@ async def startup_event():
 backend_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.abspath(os.path.join(backend_dir, "..", ".."))
 frontend_path = os.path.join(project_root, "frontend")
+
 app.mount("/", StaticFiles(directory=frontend_path, html=True), name="static")

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
 from .database import Base
 from datetime import datetime
@@ -18,6 +18,7 @@ class Menu(Base):
     price = Column(Float)
     category = Column(String, default="general")
     image_url = Column(String, nullable=True)
+    is_out_of_stock = Column(Boolean, default=False)
 
     order_items = relationship("OrderItem", back_populates="menu")
 

@@ -1,4 +1,4 @@
-const API_BASE = 'http://localhost:8000';
+const API_BASE = window.location.origin + '/';
 const WS_BASE = 'ws://localhost:8000/ws';
 
 let currentMode = null; // 'cashier', 'kitchen', or 'admin'
@@ -91,7 +91,7 @@ function fetchWithError(url, options = {}) {
 // メニューロード (全メニュー)
 async function loadMenus() {
     try {
-        const menus = await fetchWithError('/menus/');
+        const menus = await fetchWithError('api/menus/');
         elements.menusGrid.innerHTML = '';
         menus.forEach(menu => {
             const card = document.createElement('div');
@@ -239,7 +239,7 @@ elements.orderSubmitBtn.onclick = async () => {
                 resetMobileOrderLookup();
             } else {
                 // Paying for a local cart order: POST new order
-                const response = await fetchWithError('/orders/', {
+                const response = await fetchWithError('api/orders/', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -275,7 +275,7 @@ elements.findOrderBtn.onclick = async () => {
     }
 
     try {
-        const order = await fetchWithError(`/orders/by_payment_number/${paymentNumber}`);
+        const order = await fetchWithError(`api/orders/by_payment_number/${paymentNumber}`);
         fetchedMobileOrder = order;
         displayFetchedOrder(order);
     } catch (error) {
@@ -324,7 +324,7 @@ elements.mobileOrderPayBtn.onclick = () => {
 // 注文履歴ロード
 async function loadHistory() {
     try {
-        const orders = await fetchWithError('/orders/');
+        const orders = await fetchWithError('api/orders/');
         elements.historyList.innerHTML = orders.map(order => `
             <div class="history-item">
                 <h4>注文 ${order.id} - ${order.created_at}</h4>
@@ -340,50 +340,108 @@ async function loadHistory() {
 // 調理側: 注文ロード
 async function loadOrders() {
     try {
-        const orders = await fetchWithError('/orders/');
-        activeOrders = orders.filter(order => order.status !== 'completed');
+        const orders = await fetchWithError('api/orders/');
+        
+        // 表示対象の注文をフィルタリング
+        activeOrders = orders.filter(order => ['pending', 'preparing', 'ready', 'completed'].includes(order.status));
+        const unpaidOrders = orders.filter(order => order.status === 'unpaid');
+
         elements.activeOrders.innerHTML = '';
+        if (activeOrders.length === 0) {
+            elements.activeOrders.innerHTML = '<p>調理対象の注文はありません。</p>';
+        }
+        
+        // 注文をステータスとIDでソート
+        activeOrders.sort((a, b) => {
+            const statusOrder = { 'pending': 1, 'preparing': 2, 'ready': 3, 'completed': 4 };
+            if (statusOrder[a.status] !== statusOrder[b.status]) {
+                return statusOrder[a.status] - statusOrder[b.status];
+            }
+            return b.id - a.id; // 新しいものが上
+        });
+        
         activeOrders.forEach(order => {
             const div = document.createElement('div');
-            div.className = 'order-card';
+            div.className = `order-card status-${order.status}`; // ステータスに応じたクラスを追加
             div.innerHTML = `
                 <h4>注文 ${order.id}</h4>
                 <ul>${order.order_items.map(item => `<li>${item.menu?.name || '不明'} x${item.quantity}</li>`).join('')}</ul>
                 <p>合計: ${order.total_price}円</p>
-                <p>ステータス: ${order.status}</p>
-                <button onclick="updateOrderStatus(${order.id}, 'preparing')">調理開始</button>
-                <button onclick="updateOrderStatus(${order.id}, 'completed')">完成</button>
+                <p>ステータス: <span class="status-text">${getStatusText(order.status)}</span></p>
+                <div class="order-actions">
+                    ${order.status === 'pending' ? `
+                        <button onclick="updateOrderStatus(${order.id}, 'preparing')">調理開始</button>
+                        <button class="cancel-btn" onclick="updateOrderStatus(${order.id}, 'cancelled', '本当にこの注文をキャンセルしますか？')">キャンセル</button>
+                    ` : ''}
+                    ${order.status === 'preparing' ? `<button onclick="updateOrderStatus(${order.id}, 'ready')">調理完了</button>` : ''}
+                    ${order.status === 'ready' ? `<button onclick="updateOrderStatus(${order.id}, 'completed')">提供完了</button>` : ''}
+                    ${order.status === 'completed' ? `<button class="revert-btn" onclick="updateOrderStatus(${order.id}, 'pending', 'この注文を受付済みに戻しますか？')">受付済みに戻す</button>` : ''}
+                </div>
             `;
             elements.activeOrders.appendChild(div);
         });
+
+        // 未払い注文の表示
+        const unpaidList = document.getElementById('unpaid-orders-list');
+        if (unpaidList) {
+            unpaidList.innerHTML = '';
+            if (unpaidOrders.length === 0) {
+                unpaidList.innerHTML = '<p>未払いの注文はありません。</p>';
+            } else {
+                unpaidOrders.forEach(order => {
+                    const div = document.createElement('div');
+                    div.className = 'order-card-small'; // A smaller card for unpaid orders
+                    div.innerHTML = `
+                        <div>注文 ${order.id} (支払番号: ${order.payment_number})</div>
+                        <div>${new Date(order.created_at).toLocaleTimeString('ja-JP')}</div>
+                    `;
+                    unpaidList.appendChild(div);
+                });
+            }
+        }
+
         updateStatuses();
     } catch (error) {
         console.error('注文取得エラー:', error);
     }
 }
 
-function updateOrderStatus(orderId, status) {
-    fetch(API_BASE + `/orders/${orderId}`, {
+function updateOrderStatus(orderId, status, confirmationMessage) {
+    if (confirmationMessage && !confirm(confirmationMessage)) {
+        return;
+    }
+
+    fetch(API_BASE + `api/orders/${orderId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status })
-    }).then(() => {
-        loadOrders();
-        loadHistory();
-        
-        // 注文が完了した場合、売上データを更新
-        if (status === 'completed') {
-            if (currentMode === 'admin') {
-                loadRealtimeSales();
-                loadSalesByTime();
-                loadAdminOrders();
-            }
+    })
+    .then(async res => {
+        if (!res.ok) {
+            const errorData = await res.json().catch(() => ({ detail: 'ステータス更新中に不明なエラーが発生しました。' }));
+            throw new Error(errorData.detail || `HTTP ${res.status}`);
         }
-        // 管理画面の注文リストを更新
+        return res.json();
+    })
+    .then(() => {
+        // すべての関連ビューをリロード
+        if (currentMode === 'kitchen') loadOrders();
+        if (currentMode === 'cashier') loadHistory();
         if (currentMode === 'admin') {
             loadAdminOrders();
+            // 売上は 'completed' の時のみ更新するのが一般的
+            if (status === 'completed') {
+                loadRealtimeSales();
+                loadSalesByTime();
+            }
         }
-    }).catch(error => console.error('ステータス更新エラー:', error));
+        // notice.js を使って通知
+        new Notice(`注文 ${orderId} のステータスを「${getStatusText(status)}」に更新しました。`);
+    })
+    .catch(error => {
+        console.error('ステータス更新エラー:', error);
+        alert(`エラー: ${error.message}`);
+    });
 }
 
 function updateStatuses() {
@@ -654,7 +712,7 @@ async function loadRealtimeSales() {
     if (currentMode !== 'admin') return;
     
     try {
-        const salesData = await fetchWithError('/orders/sales/realtime');
+        const salesData = await fetchWithError('api/orders/sales/realtime');
         if (elements.dailyTotal) {
             elements.dailyTotal.textContent = `${salesData.daily_total}円`;
         }
@@ -698,7 +756,7 @@ async function loadSalesByTime() {
     try {
         const today = new Date().toISOString().split('T')[0];
         
-        const salesData = await fetchWithError(`/orders/sales/by-time?start=${today}&end=${today}`);
+        const salesData = await fetchWithError(`api/orders/sales/by-time?start=${today}&end=${today}`);
         
         if (elements.salesData) {
             elements.salesData.innerHTML = '';
@@ -725,7 +783,7 @@ async function loadAdminOrders() {
     if (currentMode !== 'admin') return;
     
     try {
-        const orders = await fetchWithError('/orders/');
+        const orders = await fetchWithError('api/orders/');
         
         if (elements.adminOrdersList) {
             elements.adminOrdersList.innerHTML = '';
@@ -773,7 +831,7 @@ async function loadMenuPriceManagement() {
     if (currentMode !== 'admin') return;
     
     try {
-        const menus = await fetchWithError('/menus/');
+        const menus = await fetchWithError('api/menus/');
         
         if (elements.menuPriceList) {
             elements.menuPriceList.innerHTML = '';
@@ -819,7 +877,7 @@ async function updateMenuPrice(menuId) {
     }
     
     try {
-        await fetchWithError(`/menus/${menuId}`, {
+        await fetchWithError(`api/menus/${menuId}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ price: newPrice })
@@ -841,10 +899,12 @@ async function updateMenuPrice(menuId) {
 // ステータステキストを取得
 function getStatusText(status) {
     const statusMap = {
+        'unpaid': '未払い',
         'pending': '受付済み',
         'preparing': '調理中',
         'ready': '完成',
-        'completed': '完了'
+        'completed': '完了',
+        'cancelled': 'キャンセル済み'
     };
     return statusMap[status] || status;
 }

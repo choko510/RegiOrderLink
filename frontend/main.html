@@ -23,27 +23,25 @@
 
             <!-- レジモード -->
             <section id="cashier-mode" class="hidden">
-                <!-- モバイルオーダー検索 -->
-                <section id="mobile-order-lookup">
-                    <h2>モバイルオーダー検索</h2>
-                    <div class="lookup-form">
-                        <input type="text" id="payment-number-input" placeholder="支払い番号を入力">
-                        <button id="find-order-btn">注文検索</button>
-                    </div>
-                    <div id="mobile-order-display" class="hidden">
-                        <h3>注文内容</h3>
-                        <div id="mobile-order-items"></div>
-                        <div id="mobile-order-total"></div>
-                        <div id="mobile-order-status"></div>
-                        <button id="mobile-order-pay-btn">この注文の支払いへ</button>
-                    </div>
-                </section>
-
-                <hr>
 
                 <div class="cashier-layout">
                     <!-- 中央: メニュー -->
                     <div class="menu-area">
+                        <h3>モバイルオーダー</h3>
+                        <div class="lookup-form">
+                            <input type="text" id="payment-number-input" placeholder="支払い番号を入力">
+                            <button id="find-order-btn">注文検索</button>
+                        </div>
+                        <!-- モバイルオーダー検索 -->
+                        <section id="mobile-order-lookup">
+                            <div id="mobile-order-display" class="hidden">
+                                <h3>注文内容</h3>
+                                <div id="mobile-order-items"></div>
+                                <div id="mobile-order-total"></div>
+                                <div id="mobile-order-status"></div>
+                                <button id="mobile-order-pay-btn">この注文の支払いへ</button>
+                            </div>
+                        </section>
                         <h3>対面オーダー</h3>
                         <div id="menus-grid" class="grid"></div>
                     </div>
@@ -101,6 +99,11 @@
                         <div id="order-statuses"></div>
                     </div>
                 </div>
+
+                <section id="unpaid-orders-section" class="unpaid-section">
+                    <h3 class="unpaid-title">未払い注文 (お客様の支払い待ち)</h3>
+                    <div id="unpaid-orders-list"></div>
+                </section>
             </section>
 
             <!-- 管理モード -->

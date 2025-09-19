@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>オーダーシステム</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <main>
+            <!-- モード選択 -->
+            <section id="mode-selection">
+                <h2>モード選択</h2>
+                <div class="mode-buttons">
+                    <button id="cashier-mode-btn">レジ側</button>
+                    <button id="kitchen-mode-btn">調理側</button>
+                    <button id="admin-mode-btn">管理</button>
+                </div>
+            </section>
+
+            <!-- レジモード -->
+            <section id="cashier-mode" class="hidden">
+                <div class="cashier-layout">
+                    <!-- 中央: メニュー -->
+                    <div class="menu-area">
+                        <h3>メニュー</h3>
+                        <div id="menus-grid" class="grid"></div>
+                    </div>
+                    <!-- 右: カート -->
+                    <aside id="cart-section" class="sidebar">
+                        <h3>カート</h3>
+                        <div id="cart-items"></div>
+                        <div id="cart-total">合計: 0円</div>
+                        <div id="payment-area" class="hidden">
+                            <div id="order-summary"></div>
+                            <label for="received-amount">受け取り金額:</label>
+                            <input type="number" id="received-amount" placeholder="円" min="0">
+                            <div id="change">お釣り: 0円</div>
+                        </div>
+                        <button id="order-submit-btn">支払い完了</button>
+                    </aside>
+                </div>
+                <!-- 注文履歴 -->
+                <section id="history-section">
+                    <h2>注文履歴</h2>
+                    <div id="history-list"></div>
+                </section>
+            </section>
+
+            <!-- 調理モード -->
+            <section id="kitchen-mode" class="hidden">
+                <h2>調理側</h2>
+                
+                <!-- タイマーセクション（折りたたみ可能） -->
+                <div class="timer-section">
+                    <div class="timer-header" onclick="toggleTimerSection()">
+                        <h3>調理タイマー</h3>
+                        <span class="toggle-icon">▼</span>
+                    </div>
+                    <div id="timer-content" class="timer-content">
+                        <div class="timer-controls">
+                            <div class="timer-buttons">
+                                <button id="add-timer-btn" onclick="addNewTimer()">5分タイマー開始</button>
+                            </div>
+                        </div>
+                        <div id="active-timers" class="active-timers">
+                            <h4>アクティブタイマー</h4>
+                            <div id="timers-list"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="kitchen-layout">
+                    <div id="orders-list">
+                        <h3>注文リスト</h3>
+                        <div id="active-orders"></div>
+                    </div>
+                    <div id="status-section">
+                        <h3>ステータス</h3>
+                        <div id="order-statuses"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 管理モード -->
+            <section id="admin-mode" class="hidden">
+                <h2>売上レポート</h2>
+                <div class="admin-layout">
+                    <div class="realtime-section">
+                        <h3>リアルタイム売上</h3>
+                        <div id="realtime-sales">
+                            <div class="realtime-item">
+                                <div class="realtime-label">今日の総売上</div>
+                                <div class="realtime-value" id="daily-total">0円</div>
+                            </div>
+                            <div class="realtime-item">
+                                <div class="realtime-label">過去1時間売上</div>
+                                <div class="realtime-value" id="past-hour-total">0円</div>
+                            </div>
+                            <div class="realtime-item">
+                                <div class="realtime-label">過去30分売上</div>
+                                <div class="realtime-value" id="past-30min-total">0円</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="menu-sales-section">
+                        <h3>商品別売上（今日）</h3>
+                        <div id="menu-sales-list"></div>
+                    </div>
+                    <div id="orders-list-section">
+                        <h3>注文リスト（リアルタイム）</h3>
+                        <div id="admin-orders-list"></div>
+                    </div>
+                    <div id="sales-chart">
+                        <h3>今日の時間帯ごとの売上</h3>
+                        <div id="sales-data"></div>
+                    </div>
+                    <div id="menu-management-section">
+                        <div class="warning" style="color: red; font-weight: bold; text-align: center; margin: 10px 0; padding: 10px; background-color: #ffe6e6; border: 1px solid red; border-radius: 5px;">
+                            ⚠️ 危険: いじるな
+                        </div>
+                        <h3>商品価格管理</h3>
+                        <div id="menu-price-list"></div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>

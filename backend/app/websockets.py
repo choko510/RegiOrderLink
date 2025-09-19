@@ -1,8 +1,6 @@
 import json
 from fastapi import WebSocket, WebSocketDisconnect
 from typing import List, Optional
-import json
-
 class ConnectionManager:
     def __init__(self):
         self.active_connections: List[WebSocket] = []

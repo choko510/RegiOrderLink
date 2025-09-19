@@ -25,9 +25,10 @@ class Order(Base):
     __tablename__ = "orders"
 
     id = Column(Integer, primary_key=True, index=True)
+    payment_number = Column(String, unique=True, index=True, nullable=True)
     table_id = Column(Integer, ForeignKey("tables.id"), nullable=True)
     total_price = Column(Float)
-    status = Column(String, default="pending")  # pending, preparing, ready, completed
+    status = Column(String, default="pending")  # unpaid, pending, preparing, ready, completed, cancelled
     created_at = Column(DateTime, default=datetime.utcnow)
 
     table = relationship("Table")

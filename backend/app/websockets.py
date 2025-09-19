@@ -1,5 +1,6 @@
 from fastapi import WebSocket, WebSocketDisconnect
 from typing import List
+import json
 
 class ConnectionManager:
     def __init__(self):
@@ -21,6 +22,12 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-async def notify_new_order(order_id: int):
-    message = f"New order created: {order_id}"
+async def notify_new_order(order_id: int, status: str):
+    """Notify all connected clients about a new order for the kitchen."""
+    message = json.dumps({"type": "new_order", "order_id": order_id, "status": status})
+    await manager.broadcast(message)
+
+async def notify_order_update(order_id: int, status: str):
+    """Notify all connected clients about an order status update."""
+    message = json.dumps({"type": "update_order", "order_id": order_id, "status": status})
     await manager.broadcast(message)

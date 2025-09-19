@@ -14,7 +14,6 @@
             <section id="mode-selection">
                 <h2>モード選択</h2>
                 <div class="mode-buttons">
-                    <a href="mobile.html" class="mode-btn-link"><button>モバイルオーダー（お客様用）</button></a>
                     <button id="cashier-mode-btn">レジ側</button>
                     <button id="kitchen-mode-btn">調理側</button>
                     <button id="admin-mode-btn">管理</button>
@@ -23,33 +22,15 @@
 
             <!-- レジモード -->
             <section id="cashier-mode" class="hidden">
-                <!-- モバイルオーダー検索 -->
-                <section id="mobile-order-lookup">
-                    <h2>モバイルオーダー検索</h2>
-                    <div class="lookup-form">
-                        <input type="text" id="payment-number-input" placeholder="支払い番号を入力">
-                        <button id="find-order-btn">注文検索</button>
-                    </div>
-                    <div id="mobile-order-display" class="hidden">
-                        <h3>注文内容</h3>
-                        <div id="mobile-order-items"></div>
-                        <div id="mobile-order-total"></div>
-                        <div id="mobile-order-status"></div>
-                        <button id="mobile-order-pay-btn">この注文の支払いへ</button>
-                    </div>
-                </section>
-
-                <hr>
-
                 <div class="cashier-layout">
                     <!-- 中央: メニュー -->
                     <div class="menu-area">
-                        <h3>対面オーダー</h3>
+                        <h3>メニュー</h3>
                         <div id="menus-grid" class="grid"></div>
                     </div>
                     <!-- 右: カート -->
                     <aside id="cart-section" class="sidebar">
-                        <h3>現在のカート（対面）</h3>
+                        <h3>カート</h3>
                         <div id="cart-items"></div>
                         <div id="cart-total">合計: 0円</div>
                         <div id="payment-area" class="hidden">
@@ -58,12 +39,12 @@
                             <input type="number" id="received-amount" placeholder="円" min="0">
                             <div id="change">お釣り: 0円</div>
                         </div>
-                        <button id="order-submit-btn">支払いへ進む</button>
+                        <button id="order-submit-btn">支払い完了</button>
                     </aside>
                 </div>
                 <!-- 注文履歴 -->
                 <section id="history-section">
-                    <h2>全注文履歴</h2>
+                    <h2>注文履歴</h2>
                     <div id="history-list"></div>
                 </section>
             </section>

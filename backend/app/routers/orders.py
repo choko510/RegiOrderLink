@@ -5,7 +5,7 @@ from sqlalchemy import func
 from ..database import get_db
 from ..models import Order as ModelOrder, OrderItem as ModelOrderItem, Menu as ModelMenu, Table as ModelTable
 from ..schemas import OrderCreate, Order, OrderItem, StatusUpdate, SalesByTime, RealtimeSales, MenuSales
-from ..websockets import notify_new_order
+from ..websockets import notify_order_update
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import func, extract
 from sqlalchemy import extract
@@ -39,14 +39,19 @@ async def create_order(order: OrderCreate, db: Session = Depends(get_db)):
         if not table:
             raise HTTPException(status_code=404, detail="Table not found")
     
-    # 合計価格計算
-    total_price = 0.0
-    for item in order.order_items:
-        menu = db.query(ModelMenu).filter(ModelMenu.id == item.menu_id).first()
-        if not menu:
-            raise HTTPException(status_code=404, detail=f"Menu item {item.menu_id} not found")
-        total_price += menu.price * item.quantity
-    
+    # 合計価格計算 (N+1問題対策)
+    menu_ids = [item.menu_id for item in order.order_items]
+    menus = db.query(ModelMenu).filter(ModelMenu.id.in_(menu_ids)).all()
+    menu_map = {menu.id: menu for menu in menus}
+
+    if len(menu_ids) != len(menus):
+        # 存在しないメニューIDを特定してエラーメッセージに含める
+        found_ids = set(menu_map.keys())
+        missing_ids = [mid for mid in menu_ids if mid not in found_ids]
+        raise HTTPException(status_code=404, detail=f"Menu items not found: {missing_ids}")
+
+    total_price = sum(menu_map[item.menu_id].price * item.quantity for item in order.order_items)
+
     # 注文作成
     db_order = ModelOrder(table_id=order.table_id, total_price=total_price)
     db.add(db_order)
@@ -66,7 +71,7 @@ async def create_order(order: OrderCreate, db: Session = Depends(get_db)):
     ).filter(ModelOrder.id == db_order.id).first()
     
     # WebSocket通知
-    await notify_new_order(db_order.id)
+    await notify_order_update(db_order.id, is_new=True)
     
     return full_order
 
@@ -81,7 +86,7 @@ async def update_order_status(order_id: int, status_update: StatusUpdate, db: Se
     db.commit()
     db.refresh(order)
     order.order_items = order.order_items or []
-    await notify_new_order(order_id)
+    await notify_order_update(order_id)
     return order
 
 @router.get("/sales/by-time", response_model=List[SalesByTime])

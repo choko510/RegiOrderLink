@@ -115,17 +115,41 @@ function updateCart() {
         const div = document.createElement('div');
         div.className = 'cart-item';
         div.innerHTML = `
-            <span>${item.name} x${item.quantity}</span>
-            <span>${itemTotal}円</span>
-            <button onclick="removeFromCart(${item.menuId})">削除</button>
+            <span class="cart-item-name">${item.name}</span>
+            <div class="cart-item-controls">
+                <button onclick="decreaseCartItem(${item.menuId})">-</button>
+                <span>${item.quantity}</span>
+                <button onclick="increaseCartItem(${item.menuId})">+</button>
+            </div>
+            <span class="cart-item-price">${itemTotal}円</span>
         `;
         elements.cartItems.appendChild(div);
     });
     elements.cartTotal.textContent = `合計: ${total}円`;
+
+    // カートが空になったら支払いエリアを隠す
+    if (cart.length === 0) {
+        elements.paymentArea.classList.add('hidden');
+        elements.orderSubmitBtn.textContent = '注文送信';
+    }
 }
 
-function removeFromCart(menuId) {
-    cart = cart.filter(item => item.menuId !== menuId);
+function decreaseCartItem(menuId) {
+    const existing = cart.find(item => item.menuId === menuId);
+    if (existing) {
+        existing.quantity--;
+        if (existing.quantity <= 0) {
+            cart = cart.filter(item => item.menuId !== menuId);
+        }
+    }
+    updateCart();
+}
+
+function increaseCartItem(menuId) {
+    const existing = cart.find(item => item.menuId === menuId);
+    if (existing) {
+        existing.quantity++;
+    }
     updateCart();
 }
 
@@ -310,6 +334,13 @@ function connectWebSocket() {
                 if (currentMode === 'admin') {
                     loadAdminOrders();
                     loadRealtimeSales();
+                }
+            } else if (data.type === 'menu_update') {
+                if (currentMode === 'cashier') {
+                    loadMenus();
+                }
+                if (currentMode === 'admin') {
+                    loadMenuPriceManagement();
                 }
             }
         } catch (error) {

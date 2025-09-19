@@ -31,6 +31,11 @@ class Menu(MenuBase):
     class Config:
         from_attributes = True
 
+class MenuUpdate(BaseModel):
+    name: Optional[str] = None
+    price: Optional[float] = None
+    category: Optional[str] = None
+
 class OrderItemBase(BaseModel):
     menu_id: int
     quantity: int = 1

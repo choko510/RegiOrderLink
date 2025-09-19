@@ -83,18 +83,24 @@ async def create_order(order: OrderCreate, background_tasks: BackgroundTasks, db
         if not table:
             raise HTTPException(status_code=404, detail="Table not found")
     
-    # 合計価格計算
-    total_price = 0.0
-    for item in order.order_items:
-        menu = db.query(ModelMenu).filter(ModelMenu.id == item.menu_id).first()
-        if not menu:
-            raise HTTPException(status_code=404, detail=f"Menu item {item.menu_id} not found")
-        total_price += menu.price * item.quantity
-    
+    # 合計価格計算 (N+1問題対策)
+    menu_ids = [item.menu_id for item in order.order_items]
+    unique_menu_ids = set(menu_ids)
+    menus = db.query(ModelMenu).filter(ModelMenu.id.in_(unique_menu_ids)).all()
+    menu_map = {menu.id: menu for menu in menus}
+
+    found_ids = set(menu_map.keys())
+    missing_ids = list(unique_menu_ids - found_ids)
+    if missing_ids:
+        raise HTTPException(status_code=404, detail=f"Menu items not found: {missing_ids}")
+
+    total_price = sum(menu_map[item.menu_id].price * item.quantity for item in order.order_items)
+
     # 支払い番号生成
     timestamp = int(time.time() * 100)
     random_num = random.randint(100, 999)
     payment_number = f"{timestamp}-{random_num}"
+
 
     # 注文作成
     db_order = ModelOrder(
@@ -122,8 +128,7 @@ async def create_order(order: OrderCreate, background_tasks: BackgroundTasks, db
         joinedload(ModelOrder.order_items).joinedload(ModelOrderItem.menu)
     ).filter(ModelOrder.id == db_order.id).first()
     
-    # WebSocket通知 (新規注文は厨房には通知しない)
-    # await notify_new_order(db_order.id)
+await notify_order_update(db_order.id, is_new=True)
     
     return full_order
 
@@ -140,14 +145,15 @@ async def update_order_status(order_id: int, status_update: StatusUpdate, db: Se
     db.commit()
     db.refresh(order)
     order.order_items = order.order_items or []
-
-    # Notify based on status change
-    if original_status == 'unpaid' and order.status == 'pending':
-        # This is a newly paid order, treat as a "new order" for the kitchen
-        await notify_new_order(order.id, order.status)
-    else:
-        # Otherwise, it's just a status update
-        await notify_order_update(order.id, order.status)
+# Notify based on status change
+# （支払い済みになった注文は厨房では「新規注文」として扱う）
+if original_status == 'unpaid' and order.status == 'pending':
+    # newly paid -> treat as "new order" for the kitchen/front
+    await notify_new_order(order.id, order.status)
+else:
+    # otherwise it's a normal status update
+    # prefer passing the status so receivers can know the new state
+    await notify_order_update(order.id, order.status)
 
     return order
 

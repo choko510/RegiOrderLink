@@ -41,13 +41,13 @@ async def create_order(order: OrderCreate, db: Session = Depends(get_db)):
     
     # 合計価格計算 (N+1問題対策)
     menu_ids = [item.menu_id for item in order.order_items]
-    menus = db.query(ModelMenu).filter(ModelMenu.id.in_(menu_ids)).all()
+    unique_menu_ids = set(menu_ids)
+    menus = db.query(ModelMenu).filter(ModelMenu.id.in_(unique_menu_ids)).all()
     menu_map = {menu.id: menu for menu in menus}
 
-    if len(menu_ids) != len(menus):
-        # 存在しないメニューIDを特定してエラーメッセージに含める
-        found_ids = set(menu_map.keys())
-        missing_ids = [mid for mid in menu_ids if mid not in found_ids]
+    found_ids = set(menu_map.keys())
+    missing_ids = list(unique_menu_ids - found_ids)
+    if missing_ids:
         raise HTTPException(status_code=404, detail=f"Menu items not found: {missing_ids}")
 
     total_price = sum(menu_map[item.menu_id].price * item.quantity for item in order.order_items)

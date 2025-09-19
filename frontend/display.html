@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>注文状況</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans JP', sans-serif;
+            background-color: #1a1a1a;
+            color: #ffffff;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+        .container {
+            display: flex;
+            height: 100vh;
+        }
+        .status-panel {
+            flex: 1;
+            padding: 20px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+        }
+        .status-panel h1 {
+            text-align: center;
+            font-size: 3em;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 3px solid;
+        }
+        #pending-panel h1 {
+            border-color: #3498db;
+            color: #3498db;
+        }
+        #preparing-panel {
+            background-color: #2c2c2c;
+            border-left: 2px solid #444;
+        }
+        #preparing-panel h1 {
+            border-color: #f39c12;
+            color: #f39c12;
+        }
+        #ready-panel {
+            background-color: #222;
+            border-left: 2px solid #444;
+        }
+        #ready-panel h1 {
+            border-color: #2ecc71;
+            color: #2ecc71;
+        }
+        .order-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 25px;
+            overflow-y: auto;
+            flex-grow: 1;
+        }
+        .order-card {
+            background-color: #3d3d3d;
+            border-radius: 10px;
+            padding: 15px;
+            text-align: center;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            align-items: center;
+            gap: 10px;
+        }
+        .order-identifier {
+            font-size: 2.5em;
+            font-weight: bold;
+            color: #fff;
+        }
+        .item-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            text-align: left;
+            width: 100%;
+            font-size: 1.1em;
+            border-top: 1px solid #555;
+            padding-top: 10px;
+        }
+        .item {
+            padding: 4px 5px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .item-name {
+            flex-grow: 1;
+        }
+        .item-quantity {
+            padding-left: 10px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="pending-panel" class="status-panel">
+            <h1>受付済み</h1>
+            <div id="pending-list" class="order-list">
+                <!-- Pending orders will be injected here -->
+            </div>
+        </div>
+        <div id="preparing-panel" class="status-panel">
+            <h1>調理中</h1>
+            <div id="preparing-list" class="order-list">
+                <!-- Orders in preparation will be injected here -->
+            </div>
+        </div>
+        <div id="ready-panel" class="status-panel">
+            <h1>お渡し可能</h1>
+            <div id="ready-list" class="order-list">
+                <!-- Ready orders will be injected here -->
+            </div>
+        </div>
+    </div>
+    <script src="display.js"></script>
+</body>
+</html>

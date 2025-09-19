@@ -56,6 +56,16 @@ def get_orders(db: Session = Depends(get_db)):
         order.order_items = order.order_items or []
     return orders
 
+@router.get("/active", response_model=list[Order])
+def get_active_orders(db: Session = Depends(get_db)):
+    active_statuses = ["pending", "preparing", "ready", "調理中", "提供可能"]
+    orders = db.query(ModelOrder).options(
+        joinedload(ModelOrder.order_items).joinedload(ModelOrderItem.menu)
+    ).filter(ModelOrder.status.in_(active_statuses)).order_by(ModelOrder.created_at).all()
+    for order in orders:
+        order.order_items = order.order_items or []
+    return orders
+
 @router.get("/by_payment_number/{payment_number}", response_model=Order)
 def get_order_by_payment_number_api(payment_number: str, db: Session = Depends(get_db)):
     order = get_order_by_payment_number(payment_number, db)

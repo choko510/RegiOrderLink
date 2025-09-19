@@ -1,5 +1,5 @@
 const API_BASE = window.location.origin + '/';
-const WS_BASE = 'wss://' + window.location.host + '/ws';
+const WS_BASE = window.location.origin.replace(/^http/, 'ws')+"/ws";
 
 let currentMode = null; // 'cashier', 'kitchen', or 'admin'
 let cart = [];

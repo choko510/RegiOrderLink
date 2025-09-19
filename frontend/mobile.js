@@ -1,16 +1,16 @@
-const API_BASE = 'http://localhost:8000';
+const API_BASE = '/api';
 
 let cart = [];
+let menuData = [];
 
 const elements = {
     menusGrid: document.getElementById('menus-grid'),
     cartItems: document.getElementById('cart-items'),
     cartTotal: document.getElementById('cart-total'),
     orderSubmitBtn: document.getElementById('order-submit-btn'),
-    orderScreen: document.getElementById('order-screen'),
-    cartSection: document.getElementById('cart-section'),
-    orderConfirmation: document.getElementById('order-confirmation'),
-    paymentNumberDisplay: document.getElementById('payment-number-display')
+    paymentNumberDisplay: document.getElementById('payment-number-display'),
+    orderConfirmationModal: new bootstrap.Modal(document.getElementById('order-confirmation-modal')),
+    explanationModal: new bootstrap.Modal(document.getElementById('explanation-modal'))
 };
 
 // --- Utility Functions ---
@@ -25,32 +25,46 @@ function fetchWithError(url, options = {}) {
 async function loadMenus() {
     try {
         const menus = await fetchWithError('/menus/');
+        menuData = menus;
         elements.menusGrid.innerHTML = '';
         menus.forEach(menu => {
-            const card = document.createElement('div');
-            card.className = 'menu-card';
-            card.innerHTML = `
-                <h3>${menu.name}</h3>
-                <p class="price">${menu.price}円</p>
-                <button onclick="addToCart(${menu.id}, '${menu.name.replace(/'/g, "\\'")}', ${menu.price})">追加</button>
+            const col = document.createElement('div');
+            col.className = 'col';
+            col.innerHTML = `
+                <div class="card h-100 ${menu.is_out_of_stock ? 'border-danger' : ''}">
+                    <div class="card-body d-flex flex-column">
+                        <h5 class="card-title">${menu.name}</h5>
+                        <p class="card-text">${menu.price}円</p>
+                        <button class="btn btn-primary mt-auto" ${menu.is_out_of_stock ? 'disabled' : ''} onclick="addToCart(${menu.id})">
+                            ${menu.is_out_of_stock ? '品切れ' : '追加'}
+                        </button>
+                    </div>
+                </div>
             `;
-            elements.menusGrid.appendChild(card);
+            elements.menusGrid.appendChild(col);
         });
     } catch (error) {
         console.error('メニュー取得エラー:', error);
-        elements.menusGrid.innerHTML = '<p>メニューの読み込みに失敗しました。</p>';
+        elements.menusGrid.innerHTML = '<p class="text-danger">メニューの読み込みに失敗しました。</p>';
     }
 }
 
 // --- Cart Management ---
-function addToCart(menuId, name, price) {
+function addToCart(menuId) {
+    const menu = menuData.find(m => m.id === menuId);
+    if (menu.is_out_of_stock) {
+        alert('この商品は品切れです。');
+        return;
+    }
+
     const existing = cart.find(item => item.menuId === menuId);
     if (existing) {
         existing.quantity++;
     } else {
-        cart.push({ menuId, name, price, quantity: 1 });
+        cart.push({ menuId, name: menu.name, price: menu.price, quantity: 1 });
     }
     updateCart();
+    notie.alert({ type: 'success', text: `${menu.name}をカートに追加しました`, time: 2 });
 }
 
 function removeFromCart(menuId) {
@@ -65,19 +79,24 @@ function updateCart() {
     elements.cartItems.innerHTML = '';
     let total = 0;
     if (cart.length === 0) {
-        elements.cartItems.innerHTML = '<p>カートは空です。</p>';
+        const li = document.createElement('li');
+        li.className = 'list-group-item';
+        li.textContent = 'カートは空です。';
+        elements.cartItems.appendChild(li);
     } else {
         cart.forEach(item => {
             const itemTotal = item.price * item.quantity;
             total += itemTotal;
-            const div = document.createElement('div');
-            div.className = 'cart-item';
-            div.innerHTML = `
-                <span>${item.name} x${item.quantity}</span>
-                <span>${itemTotal}円</span>
-                <button onclick="removeFromCart(${item.menuId})">削除</button>
+            const li = document.createElement('li');
+            li.className = 'list-group-item d-flex justify-content-between align-items-center';
+            li.innerHTML = `
+                <div>${item.name} x${item.quantity}</div>
+                <div class="d-flex align-items-center">
+                    <span class="me-3">${itemTotal}円</span>
+                    <button class="btn btn-danger btn-sm" onclick="removeFromCart(${item.menuId})">削除</button>
+                </div>
             `;
-            elements.cartItems.appendChild(div);
+            elements.cartItems.appendChild(li);
         });
     }
     elements.cartTotal.textContent = `合計: ${total}円`;
@@ -112,13 +131,14 @@ elements.orderSubmitBtn.onclick = async () => {
 
 function showConfirmationScreen(paymentNumber) {
     elements.paymentNumberDisplay.textContent = paymentNumber;
-    elements.orderScreen.classList.add('hidden');
-    elements.cartSection.classList.add('hidden');
-    elements.orderConfirmation.classList.remove('hidden');
+    elements.orderConfirmationModal.show();
+    cart = [];
+    updateCart();
 }
 
 // --- Initialization ---
 document.addEventListener('DOMContentLoaded', () => {
+    elements.explanationModal.show();
     loadMenus();
     updateCart();
 });

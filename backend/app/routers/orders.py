@@ -9,11 +9,14 @@ from ..database import SessionLocal
 from ..websockets import notify_new_order, notify_order_update
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import func, extract
+
+JST = timezone(timedelta(hours=9))
 from sqlalchemy import extract
 from typing import List
 import random
 import time
 import asyncio
+import string
 
 router = APIRouter()
 
@@ -31,11 +34,15 @@ async def cancel_order_if_unpaid(order_id: int):
     try:
         db_order = db.query(ModelOrder).filter(ModelOrder.id == order_id).first()
         if db_order and db_order.status == 'unpaid':
-            db_order.status = 'cancelled'
-            db.commit()
-            db.refresh(db_order)
-            print(f"Order {order_id} has been cancelled due to non-payment.")
-            await notify_order_update(order_id, 'cancelled')
+            created_at = db_order.created_at
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=JST)
+            if datetime.now(JST) - created_at > timedelta(minutes=15):
+                db_order.status = 'cancelled'
+                db.commit()
+                db.refresh(db_order)
+                print(f"Order {order_id} has been cancelled due to non-payment.")
+                await notify_order_update(order_id, 'cancelled')
     finally:
         db.close()
 
@@ -57,7 +64,10 @@ def get_order_by_payment_number_api(payment_number: str, db: Session = Depends(g
 
     # 15分以上経過していて未払いの場合
     if order.status == 'unpaid':
-        if datetime.utcnow() - order.created_at > timedelta(minutes=15):
+        created_at = order.created_at
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=JST)
+        if datetime.now(JST) - created_at > timedelta(minutes=15):
             order.status = 'cancelled'
             db.commit()
             db.refresh(order)
@@ -96,23 +106,22 @@ async def create_order(order: OrderCreate, background_tasks: BackgroundTasks, db
 
     total_price = sum(menu_map[item.menu_id].price * item.quantity for item in order.order_items)
 
-    # 支払い番号生成
-    timestamp = int(time.time() * 100)
-    random_num = random.randint(100, 999)
-    payment_number = f"{timestamp}-{random_num}"
-
+    payment_number = None
+    # モバイルオーダーの場合のみ支払い番号を生成
+    if order.status == "unpaid":
+        payment_number = ''.join(random.choices(string.ascii_uppercase + string.digits, k=3))
 
     # 注文作成
     db_order = ModelOrder(
         table_id=order.table_id,
         total_price=total_price,
         payment_number=payment_number,
-        status="unpaid"  # 初期ステータスをunpaidに
+        status=order.status  # フロントエンドからのステータスを使用
     )
     db.add(db_order)
     db.commit()
     db.refresh(db_order)
-    
+
     # 注文アイテム追加
     for item in order.order_items:
         db_item = ModelOrderItem(order_id=db_order.id, menu_id=item.menu_id, quantity=item.quantity)
@@ -120,16 +129,17 @@ async def create_order(order: OrderCreate, background_tasks: BackgroundTasks, db
     db.commit()
     db.refresh(db_order)
     
-    # 15分後にキャンセルするバックグラウンドタスクを追加
-    background_tasks.add_task(cancel_order_if_unpaid, db_order.id)
+    # unpaidの場合のみ、15分後にキャンセルするバックグラウンドタスクを追加
+    if db_order.status == "unpaid":
+        background_tasks.add_task(cancel_order_if_unpaid, db_order.id)
 
     # メニュー情報を含む注文を再クエリ
     full_order = db.query(ModelOrder).options(
         joinedload(ModelOrder.order_items).joinedload(ModelOrderItem.menu)
     ).filter(ModelOrder.id == db_order.id).first()
-    
-await notify_order_update(db_order.id, is_new=True)
-    
+
+    await notify_order_update(db_order.id, is_new=True)
+
     return full_order
 
 @router.patch("/{order_id}", response_model=Order)
@@ -141,21 +151,37 @@ async def update_order_status(order_id: int, status_update: StatusUpdate, db: Se
         raise HTTPException(status_code=404, detail="Order not found")
 
     original_status = order.status
-    order.status = status_update.status
-    db.commit()
-    db.refresh(order)
-    order.order_items = order.order_items or []
-# Notify based on status change
-# （支払い済みになった注文は厨房では「新規注文」として扱う）
-if original_status == 'unpaid' and order.status == 'pending':
-    # newly paid -> treat as "new order" for the kitchen/front
-    await notify_new_order(order.id, order.status)
-else:
-    # otherwise it's a normal status update
-    # prefer passing the status so receivers can know the new state
-    await notify_order_update(order.id, order.status)
+    new_status = status_update.status
 
-    return order
+    # Define allowed transitions
+    allowed_transitions = {
+        'unpaid': ['pending', 'cancelled'],
+        'pending': ['preparing', 'cancelled'],
+        'preparing': ['ready'],
+        'ready': ['completed'],
+        'completed': ['pending'] # Allow returning to pending
+    }
+
+    if original_status in allowed_transitions and new_status in allowed_transitions[original_status]:
+        order.status = new_status
+        db.commit()
+        db.refresh(order)
+        
+        # Notify clients
+        if original_status == 'unpaid' and new_status == 'pending':
+            await notify_new_order(order.id, new_status)
+        else:
+            await notify_order_update(order.id, new_status)
+
+        # Reload items for the response
+        order.order_items = order.order_items or []
+        return order
+    else:
+        # If the transition is not allowed, raise an exception
+        raise HTTPException(
+            status_code=400,
+            detail=f"Transition from '{original_status}' to '{new_status}' is not allowed."
+        )
 
 @router.get("/sales/by-time", response_model=List[SalesByTime])
 async def get_sales_by_time(
@@ -167,9 +193,8 @@ async def get_sales_by_time(
     end_date = datetime.fromisoformat(end).date()
     
     # 日本時間で開始日時と終了日時を設定（UTC+9）
-    jst = timezone(timedelta(hours=9))
-    start_datetime = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=jst)
-    end_datetime = datetime.combine(end_date, datetime.max.time()).replace(tzinfo=jst)
+    start_datetime = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=JST)
+    end_datetime = datetime.combine(end_date, datetime.max.time()).replace(tzinfo=JST)
     
     # 完了した注文のみ集計
     sales_data = db.query(
@@ -191,35 +216,37 @@ async def get_sales_by_time(
 
 @router.get("/sales/realtime", response_model=RealtimeSales)
 async def get_realtime_sales(db: Session = Depends(get_db)):
-    # 日本時間で現在時刻を取得（UTC+9）
-    jst = timezone(timedelta(hours=9))
-    now = datetime.now(jst)
-    today_start = datetime.combine(now.date(), datetime.min.time()).replace(tzinfo=jst)
-    tomorrow_start = today_start + timedelta(days=1)
+    now_jst = datetime.now(JST)
     
-    # 過去1時間と過去30分の基準時刻
-    one_hour_ago = now - timedelta(hours=1)
-    thirty_minutes_ago = now - timedelta(minutes=30)
+    # JSTでの今日の開始時刻（00:00）
+    today_start_jst = now_jst.replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    # JSTでの明日の開始時刻（00:00）
+    tomorrow_start_jst = today_start_jst + timedelta(days=1)
+
+    # 過去1時間と過去30分の基準時刻 (JST)
+    one_hour_ago_jst = now_jst - timedelta(hours=1)
+    thirty_minutes_ago_jst = now_jst - timedelta(minutes=30)
     
     # 今日の総売上 (完了注文)
     daily_total = db.query(func.sum(ModelOrder.total_price)).filter(
         ModelOrder.status == 'completed',
-        ModelOrder.created_at >= today_start,
-        ModelOrder.created_at < tomorrow_start
+        ModelOrder.created_at >= today_start_jst,
+        ModelOrder.created_at < tomorrow_start_jst
     ).scalar() or 0.0
     
     # 過去1時間の売上
     past_hour_total = db.query(func.sum(ModelOrder.total_price)).filter(
         ModelOrder.status == 'completed',
-        ModelOrder.created_at >= one_hour_ago,
-        ModelOrder.created_at <= now
+        ModelOrder.created_at >= one_hour_ago_jst,
+        ModelOrder.created_at <= now_jst
     ).scalar() or 0.0
     
     # 過去30分の売上
     past_30min_total = db.query(func.sum(ModelOrder.total_price)).filter(
         ModelOrder.status == 'completed',
-        ModelOrder.created_at >= thirty_minutes_ago,
-        ModelOrder.created_at <= now
+        ModelOrder.created_at >= thirty_minutes_ago_jst,
+        ModelOrder.created_at <= now_jst
     ).scalar() or 0.0
     
     # 今日の商品ごとの売上
@@ -232,8 +259,8 @@ async def get_realtime_sales(db: Session = Depends(get_db)):
     ).join(ModelOrder, ModelOrderItem.order_id == ModelOrder.id
     ).filter(
         ModelOrder.status == 'completed',
-        ModelOrder.created_at >= today_start,
-        ModelOrder.created_at < tomorrow_start
+        ModelOrder.created_at >= today_start_jst,
+        ModelOrder.created_at < tomorrow_start_jst
     ).group_by(
         ModelOrderItem.menu_id, ModelMenu.name, ModelMenu.price
     ).order_by(func.sum(ModelOrderItem.quantity * ModelMenu.price).desc()).all()

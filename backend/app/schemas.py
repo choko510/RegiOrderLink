@@ -2,6 +2,9 @@ from pydantic import BaseModel
 from typing import List, Optional
 from typing import List, Optional
 from datetime import datetime
+from zoneinfo import ZoneInfo
+
+JST = ZoneInfo("Asia/Tokyo")
 
 class TableBase(BaseModel):
     name: str
@@ -21,6 +24,7 @@ class MenuBase(BaseModel):
     price: float
     category: Optional[str] = "general"
     image_url: Optional[str] = None
+    is_out_of_stock: bool = False
 
 class MenuCreate(MenuBase):
     pass
@@ -35,6 +39,7 @@ class MenuUpdate(BaseModel):
     name: Optional[str] = None
     price: Optional[float] = None
     category: Optional[str] = None
+    is_out_of_stock: Optional[bool] = None
 
 class OrderItemBase(BaseModel):
     menu_id: int
@@ -57,7 +62,7 @@ class OrderBase(BaseModel):
     total_price: Optional[float] = 0.0
 
 class OrderCreate(OrderBase):
-    pass
+    status: Optional[str] = "unpaid"
 
 class Order(OrderBase):
     id: int

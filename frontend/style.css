@@ -162,19 +162,53 @@ h2, h3 {
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
-.cart-item button {
-    background-color: #e74c3c;
-    color: white;
-    border: none;
-    padding: 0.5rem 1rem;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 0.9rem;
-    transition: background-color 0.3s;
+.cart-item-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 120px;
 }
 
-.cart-item button:hover {
-    background-color: #c0392b;
+.cart-item-controls button:first-child {
+    background-color: #95a5a6;
+    color: white;
+    border: none;
+    padding: 0.4rem 0.8rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: bold;
+    transition: background-color 0.3s;
+    min-width: 30px;
+}
+
+.cart-item-controls button:first-child:hover {
+    background-color: #7f8c8d;
+}
+
+.cart-item-controls button:last-child {
+    background-color: #27ae60;
+    color: white;
+    border: none;
+    padding: 0.4rem 0.8rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: bold;
+    transition: background-color 0.3s;
+    min-width: 30px;
+}
+
+.cart-item-controls button:last-child:hover {
+    background-color: #219a52;
+}
+
+.cart-item-controls span {
+    font-weight: bold;
+    min-width: 2rem;
+    text-align: center;
+    font-size: 1rem;
+    color: #2c3e50;
 }
 
 #cart-total {

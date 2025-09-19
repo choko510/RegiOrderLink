@@ -4,79 +4,73 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>モバイルオーダー</title>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/notie/4.3.1/notie.min.css">
     <link rel="stylesheet" href="style.css">
-    <style>
-        /* Mobile-specific styles */
-        #app {
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-        }
-        main {
-            flex-grow: 1;
-            overflow-y: auto;
-        }
-        .menu-area {
-            padding: 1rem;
-        }
-        #cart-section {
-            background-color: #f8f9fa;
-            padding: 1rem;
-            border-top: 1px solid #dee2e6;
-        }
-        .cart-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 0.5rem 0;
-        }
-        .cart-item span {
-            flex-grow: 1;
-        }
-        #order-confirmation {
-            text-align: center;
-            padding: 2rem;
-            font-size: 1.2rem;
-        }
-        #payment-number-display {
-            font-weight: bold;
-            color: #d63384;
-            font-size: 1.5rem;
-            margin-top: 1rem;
-        }
-    </style>
 </head>
 <body>
     <div id="app">
-        <header>
+        <header class="bg-dark text-white text-center p-3">
             <h1>モバイルオーダー</h1>
         </header>
 
-        <main id="order-screen">
-            <!-- Menu Display -->
+        <main id="order-screen" class="container mt-4">
             <section class="menu-area">
                 <h2>メニュー</h2>
-                <div id="menus-grid" class="grid"></div>
+                <div id="menus-grid" class="row row-cols-2 row-cols-md-3 g-4"></div>
             </section>
         </main>
 
-        <!-- Cart Section -->
-        <aside id="cart-section">
+        <aside id="cart-section" class="container mt-4">
             <h3>カート</h3>
-            <div id="cart-items"></div>
-            <div id="cart-total">合計: 0円</div>
-            <button id="order-submit-btn">注文を確定する</button>
+            <ul id="cart-items" class="list-group mb-3"></ul>
+            <div id="cart-total" class="fw-bold fs-5 text-end">合計: 0円</div>
+            <button id="order-submit-btn" class="btn btn-primary w-100 mt-3">注文を確定する</button>
         </aside>
 
-        <!-- Order Confirmation Screen -->
-        <section id="order-confirmation" class="hidden">
-            <h2>ご注文ありがとうございます！</h2>
-            <p>レジにて以下の支払い番号をお伝えください。</p>
-            <div id="payment-number-display"></div>
-            <p><small>15分以内にお支払いください。時間を過ぎると自動的にキャンセルされます。</small></p>
-        </section>
+        <!-- Explanation Modal -->
+        <div class="modal fade" id="explanation-modal" tabindex="-1" aria-labelledby="explanationModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="explanationModalLabel">ご注文の流れ</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <ol>
+                            <li>お好きなメニューを選択してカートに追加します。</li>
+                            <li>「注文を確定する」ボタンを押すと、お支払いコードが発行されます。</li>
+                            <li>レジでコードを提示し、お支払いを済ませてください。</li>
+                            <li>お支払い後、受取場所で番号を伝えて商品をお受け取りください。</li>
+                        </ol>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">始める</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Order Confirmation Modal -->
+        <div class="modal fade" id="order-confirmation-modal" tabindex="-1" aria-labelledby="orderConfirmationModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="orderConfirmationModalLabel">ご注文ありがとうございます！</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body text-center">
+                        <p>レジにて以下の支払い番号をお伝えください。</p>
+                        <p id="payment-number-display" class="fs-3 fw-bold text-danger"></p>
+                        <p><small>15分以内にお支払いください。時間を過ぎると自動的にキャンセルされます。</small></p>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/notie/4.3.1/notie.min.js"></script>
     <script src="mobile.js"></script>
 </body>
 </html>

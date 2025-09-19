@@ -1,7 +1,9 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
 from .database import Base
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+
+JST = timezone(timedelta(hours=9))
 
 class Table(Base):
     __tablename__ = "tables"
@@ -18,6 +20,7 @@ class Menu(Base):
     price = Column(Float)
     category = Column(String, default="general")
     image_url = Column(String, nullable=True)
+    is_out_of_stock = Column(Boolean, default=False)
 
     order_items = relationship("OrderItem", back_populates="menu")
 
@@ -29,7 +32,7 @@ class Order(Base):
     table_id = Column(Integer, ForeignKey("tables.id"), nullable=True)
     total_price = Column(Float)
     status = Column(String, default="pending")  # unpaid, pending, preparing, ready, completed, cancelled
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(JST))
 
     table = relationship("Table")
     order_items = relationship("OrderItem", back_populates="order")

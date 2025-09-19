@@ -1,5 +1,5 @@
 const API_BASE = window.location.origin + '/';
-const WS_BASE = 'ws://localhost:8000/ws';
+const WS_BASE = 'wss://' + window.location.host + '/ws';
 
 let currentMode = null; // 'cashier', 'kitchen', or 'admin'
 let cart = [];
@@ -47,24 +47,29 @@ const elements = {
 };
 
 function showSection(mode) {
-    currentMode = mode;
-    elements.modeSelection.classList.add('hidden');
-    elements.cashierMode.classList.add('hidden');
-    elements.kitchenMode.classList.add('hidden');
-    elements.adminMode.classList.add('hidden');
-    if (mode === 'cashier') {
-        elements.cashierMode.classList.remove('hidden');
-        loadMenus();
-        loadHistory();
-    } else if (mode === 'kitchen') {
-        elements.kitchenMode.classList.remove('hidden');
-        loadOrders();
-    } else if (mode === 'admin') {
-        elements.adminMode.classList.remove('hidden');
-        loadRealtimeSales();
-        loadSalesByTime();
-        loadAdminOrders();
-        loadMenuPriceManagement();
+    try {
+        currentMode = mode;
+        if (elements.modeSelection) elements.modeSelection.classList.add('hidden');
+        if (elements.cashierMode) elements.cashierMode.classList.add('hidden');
+        if (elements.kitchenMode) elements.kitchenMode.classList.add('hidden');
+        if (elements.adminMode) elements.adminMode.classList.add('hidden');
+
+        if (mode === 'cashier' && elements.cashierMode) {
+            elements.cashierMode.classList.remove('hidden');
+            loadMenus();
+            loadHistory();
+        } else if (mode === 'kitchen' && elements.kitchenMode) {
+            elements.kitchenMode.classList.remove('hidden');
+            loadOrders();
+        } else if (mode === 'admin' && elements.adminMode) {
+            elements.adminMode.classList.remove('hidden');
+            loadRealtimeSales();
+            loadSalesByTime();
+            loadAdminOrders();
+            loadMenuPriceManagement();
+        }
+    } catch (error) {
+        console.error(`セクション表示エラー (${mode}):`, error);
     }
 }
 
@@ -81,11 +86,29 @@ elements.adminModeBtn.onclick = () => {
 };
 
 
-function fetchWithError(url, options = {}) {
-    return fetch(API_BASE + url, options).then(res => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json();
-    });
+async function fetchWithError(url, options = {}, retries = 3, delay = 1000) {
+    for (let i = 0; i < retries; i++) {
+        try {
+            const res = await fetch(API_BASE + url, options);
+            if (!res.ok) {
+                // サーバーからのエラーレスポンス(4xx, 5xx)はリトライしない
+                if (res.status >= 400 && res.status < 600) {
+                    throw new Error(`HTTP ${res.status}`);
+                }
+                // その他のエラー（ネットワーク障害など）はリトライの対象
+                throw new Error('Network response was not ok');
+            }
+            return await res.json();
+        } catch (error) {
+            console.error(`Attempt ${i + 1} failed for ${url}:`, error.message);
+            if (i < retries - 1) {
+                await new Promise(resolve => setTimeout(resolve, delay));
+                delay *= 2; // Exponential backoff
+            } else {
+                throw error; // Last attempt failed, re-throw.
+            }
+        }
+    }
 }
 
 // メニューロード (全メニュー)
@@ -119,30 +142,38 @@ function addToCart(menuId, name, price) {
 }
 
 function updateCart() {
-    elements.cartItems.innerHTML = '';
-    let total = 0;
-    cart.forEach(item => {
-        const itemTotal = item.price * item.quantity;
-        total += itemTotal;
-        const div = document.createElement('div');
-        div.className = 'cart-item';
-        div.innerHTML = `
-            <span class="cart-item-name">${item.name}</span>
-            <div class="cart-item-controls">
-                <button onclick="decreaseCartItem(${item.menuId})">-</button>
-                <span>${item.quantity}</span>
-                <button onclick="increaseCartItem(${item.menuId})">+</button>
-            </div>
-            <span class="cart-item-price">${itemTotal}円</span>
-        `;
-        elements.cartItems.appendChild(div);
-    });
-    elements.cartTotal.textContent = `合計: ${total}円`;
+    try {
+        if (!elements.cartItems || !elements.cartTotal || !elements.paymentArea || !elements.orderSubmitBtn) {
+            console.error("カート関連のDOM要素が見つかりません。");
+            return;
+        }
+        elements.cartItems.innerHTML = '';
+        let total = 0;
+        cart.forEach(item => {
+            const itemTotal = item.price * item.quantity;
+            total += itemTotal;
+            const div = document.createElement('div');
+            div.className = 'cart-item';
+            div.innerHTML = `
+                <span class="cart-item-name">${item.name}</span>
+                <div class="cart-item-controls">
+                    <button onclick="decreaseCartItem(${item.menuId})">-</button>
+                    <span>${item.quantity}</span>
+                    <button onclick="increaseCartItem(${item.menuId})">+</button>
+                </div>
+                <span class="cart-item-price">${itemTotal}円</span>
+            `;
+            elements.cartItems.appendChild(div);
+        });
+        elements.cartTotal.textContent = `合計: ${total}円`;
 
-    // カートが空になったら支払いエリアを隠す
-    if (cart.length === 0) {
-        elements.paymentArea.classList.add('hidden');
-        elements.orderSubmitBtn.textContent = '注文送信';
+        // カートが空になったら支払いエリアを隠す
+        if (cart.length === 0) {
+            elements.paymentArea.classList.add('hidden');
+            elements.orderSubmitBtn.textContent = '注文送信';
+        }
+    } catch (error) {
+        console.error("カート更新エラー:", error);
     }
 }
 
@@ -435,8 +466,8 @@ function updateOrderStatus(orderId, status, confirmationMessage) {
                 loadSalesByTime();
             }
         }
-        // notice.js を使って通知
-        new Notice(`注文 ${orderId} のステータスを「${getStatusText(status)}」に更新しました。`);
+        // notie.js を使って通知
+        notie.alert({ type: 'success', text: `注文 ${orderId} のステータスを「${getStatusText(status)}」に更新しました。` });
     })
     .catch(error => {
         console.error('ステータス更新エラー:', error);
@@ -647,63 +678,74 @@ function removeTimer(timerId) {
 
 // アクティブタイマーを表示
 function renderActiveTimers() {
-    const timersList = document.getElementById('timers-list');
-    
-    if (activeTimers.length === 0) {
-        timersList.innerHTML = '<div class="no-timers">アクティブなタイマーはありません</div>';
-        return;
-    }
-    
-    timersList.innerHTML = '';
-    
-    activeTimers.forEach(timer => {
-        const minutes = Math.floor(timer.remaining / 60);
-        const seconds = timer.remaining % 60;
-        const timeStr = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    try {
+        const timersList = document.getElementById('timers-list');
+        if (!timersList) return;
         
-        let statusText = '';
-        let actionButtons = '';
-        
-        if (timer.state === 'finished') {
-            statusText = '完了！';
-            actionButtons = `<button class="remove-timer-btn" onclick="removeTimer(${timer.id})">削除</button>`;
-        } else if (timer.state === 'paused') {
-            statusText = '一時停止';
-            actionButtons = `
-                <button class="resume-timer-btn" onclick="resumeTimer(${timer.id})">再開</button>
-                <button class="remove-timer-btn" onclick="removeTimer(${timer.id})">削除</button>
-            `;
-        } else {
-            statusText = '調理中';
-            actionButtons = `
-                <button class="pause-timer-btn" onclick="pauseTimer(${timer.id})">一時停止</button>
-                <button class="remove-timer-btn" onclick="removeTimer(${timer.id})">削除</button>
-            `;
+        if (activeTimers.length === 0) {
+            timersList.innerHTML = '<div class="no-timers">アクティブなタイマーはありません</div>';
+            return;
         }
         
-        const timerItem = document.createElement('div');
-        timerItem.className = `timer-item ${timer.state}`;
-        timerItem.innerHTML = `
-            <div class="timer-info">
-                <span class="timer-name">${timer.name}</span>
-                <span class="timer-remaining">${timer.state === 'finished' ? '完了!' : timeStr}</span>
-                <span class="timer-status">${statusText}</span>
-            </div>
-            <div class="timer-actions">
-                ${actionButtons}
-            </div>
-        `;
-        timersList.appendChild(timerItem);
-    });
+        timersList.innerHTML = '';
+        
+        activeTimers.forEach(timer => {
+            const minutes = Math.floor(timer.remaining / 60);
+            const seconds = timer.remaining % 60;
+            const timeStr = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            
+            let statusText = '';
+            let actionButtons = '';
+            
+            if (timer.state === 'finished') {
+                statusText = '完了！';
+                actionButtons = `<button class="remove-timer-btn" onclick="removeTimer(${timer.id})">削除</button>`;
+            } else if (timer.state === 'paused') {
+                statusText = '一時停止';
+                actionButtons = `
+                    <button class="resume-timer-btn" onclick="resumeTimer(${timer.id})">再開</button>
+                    <button class="remove-timer-btn" onclick="removeTimer(${timer.id})">削除</button>
+                `;
+            } else {
+                statusText = '調理中';
+                actionButtons = `
+                    <button class="pause-timer-btn" onclick="pauseTimer(${timer.id})">一時停止</button>
+                    <button class="remove-timer-btn" onclick="removeTimer(${timer.id})">削除</button>
+                `;
+            }
+            
+            const timerItem = document.createElement('div');
+            timerItem.className = `timer-item ${timer.state}`;
+            timerItem.innerHTML = `
+                <div class="timer-info">
+                    <span class="timer-name">${timer.name}</span>
+                    <span class="timer-remaining">${timer.state === 'finished' ? '完了!' : timeStr}</span>
+                    <span class="timer-status">${statusText}</span>
+                </div>
+                <div class="timer-actions">
+                    ${actionButtons}
+                </div>
+            `;
+            timersList.appendChild(timerItem);
+        });
+    } catch (error) {
+        console.error("タイマー表示エラー:", error);
+    }
 }
 
 // 初期化
 document.addEventListener('DOMContentLoaded', function() {
-    renderActiveTimers();
-    
-    // 通知許可をリクエスト
-    if ('Notification' in window && Notification.permission === 'default') {
-        Notification.requestPermission();
+    try {
+        renderActiveTimers();
+        
+        // 通知許可をリクエスト
+        if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission();
+        }
+    } catch (error) {
+        console.error("初期化中にエラーが発生しました:", error);
+        // ユーザーにエラーを通知することも検討
+        // alert("ページの読み込み中にエラーが発生しました。");
     }
 });
 

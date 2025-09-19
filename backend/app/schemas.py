@@ -61,6 +61,7 @@ class OrderCreate(OrderBase):
 
 class Order(OrderBase):
     id: int
+    payment_number: Optional[str] = None
     status: str = "pending"
     created_at: datetime
     order_items: List[OrderItem] = []

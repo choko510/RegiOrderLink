@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>モバイルオーダー</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* Mobile-specific styles */
+        #app {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        main {
+            flex-grow: 1;
+            overflow-y: auto;
+        }
+        .menu-area {
+            padding: 1rem;
+        }
+        #cart-section {
+            background-color: #f8f9fa;
+            padding: 1rem;
+            border-top: 1px solid #dee2e6;
+        }
+        .cart-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem 0;
+        }
+        .cart-item span {
+            flex-grow: 1;
+        }
+        #order-confirmation {
+            text-align: center;
+            padding: 2rem;
+            font-size: 1.2rem;
+        }
+        #payment-number-display {
+            font-weight: bold;
+            color: #d63384;
+            font-size: 1.5rem;
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <header>
+            <h1>モバイルオーダー</h1>
+        </header>
+
+        <main id="order-screen">
+            <!-- Menu Display -->
+            <section class="menu-area">
+                <h2>メニュー</h2>
+                <div id="menus-grid" class="grid"></div>
+            </section>
+        </main>
+
+        <!-- Cart Section -->
+        <aside id="cart-section">
+            <h3>カート</h3>
+            <div id="cart-items"></div>
+            <div id="cart-total">合計: 0円</div>
+            <button id="order-submit-btn">注文を確定する</button>
+        </aside>
+
+        <!-- Order Confirmation Screen -->
+        <section id="order-confirmation" class="hidden">
+            <h2>ご注文ありがとうございます！</h2>
+            <p>レジにて以下の支払い番号をお伝えください。</p>
+            <div id="payment-number-display"></div>
+            <p><small>15分以内にお支払いください。時間を過ぎると自動的にキャンセルされます。</small></p>
+        </section>
+    </div>
+    <script src="mobile.js"></script>
+</body>
+</html>

@@ -3,10 +3,12 @@ const WS_BASE = 'ws://localhost:8000/ws';
 
 let currentMode = null; // 'cashier', 'kitchen', or 'admin'
 let cart = [];
+let fetchedMobileOrder = null; // To store the looked-up mobile order
 let activeOrders = [];
 let websocket = null;
 
 const elements = {
+    // Mode selection
     modeSelection: document.getElementById('mode-selection'),
     cashierMode: document.getElementById('cashier-mode'),
     kitchenMode: document.getElementById('kitchen-mode'),
@@ -19,6 +21,16 @@ const elements = {
     change: document.getElementById('change'),
     paymentArea: document.getElementById('payment-area'),
     historyList: document.getElementById('history-list'),
+
+    // Mobile Order Lookup
+    paymentNumberInput: document.getElementById('payment-number-input'),
+    findOrderBtn: document.getElementById('find-order-btn'),
+    mobileOrderDisplay: document.getElementById('mobile-order-display'),
+    mobileOrderItems: document.getElementById('mobile-order-items'),
+    mobileOrderTotal: document.getElementById('mobile-order-total'),
+    mobileOrderStatus: document.getElementById('mobile-order-status'),
+    mobileOrderPayBtn: document.getElementById('mobile-order-pay-btn'),
+
     activeOrders: document.getElementById('active-orders'),
     orderStatuses: document.getElementById('order-statuses'),
     cashierModeBtn: document.getElementById('cashier-mode-btn'),
@@ -186,52 +198,128 @@ function calculateChange() {
 }
 
 elements.orderSubmitBtn.onclick = async () => {
-    if (cart.length === 0) return;
+    // Determine if we are paying for a mobile order or a local cart order
+    const isMobileOrderPayment = !!fetchedMobileOrder;
+    const orderToPay = fetchedMobileOrder;
+    const cartToPay = isMobileOrderPayment ? orderToPay.order_items.map(item => ({ ...item, menuId: item.menu.id, price: item.menu.price })) : cart;
 
-    const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    if (cartToPay.length === 0) {
+        alert('支払い対象の注文がありません。');
+        return;
+    }
+
+    const total = isMobileOrderPayment ? orderToPay.total_price : cartToPay.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
     if (elements.paymentArea.classList.contains('hidden')) {
-        // 初回クリック: 支払いエリアを表示
+        // First click: Show payment area
         elements.paymentArea.classList.remove('hidden');
         elements.orderSummary.innerHTML = `<p>合計: ${total}円</p>`;
         elements.receivedAmount.value = total;
-        calculateChange();
+        calculateChange(total);
         elements.orderSubmitBtn.textContent = '支払い完了';
         
-        // cart-sectionを下までスクロール
         setTimeout(() => {
             const cartSection = document.getElementById('cart-section');
-            if (cartSection) {
-                cartSection.scrollTop = cartSection.scrollHeight;
-            }
+            if (cartSection) cartSection.scrollTop = cartSection.scrollHeight;
         }, 100);
+
     } else {
-        // 2回目クリック: 検証して送信
+        // Second click: Validate and submit
         const received = parseFloat(elements.receivedAmount.value) || 0;
         if (received < total) {
             alert('受け取り金額が不足しています。');
             return;
         }
+
         try {
-            const response = await fetchWithError('/orders/', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    order_items: cart.map(item => ({ menu_id: item.menuId, quantity: item.quantity })),
-                    total_price: total
-                })
-            });
-            alert(`注文完了: ID ${response.id} お釣り: ${received - total}円`);
-            cart = [];
-            updateCart();
+            if (isMobileOrderPayment) {
+                // Paying for a fetched mobile order: PATCH status
+                await updateOrderStatus(orderToPay.id, 'pending');
+                alert(`注文 ${orderToPay.id} の支払い完了。お釣り: ${received - total}円`);
+                resetMobileOrderLookup();
+            } else {
+                // Paying for a local cart order: POST new order
+                const response = await fetchWithError('/orders/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        order_items: cart.map(item => ({ menu_id: item.menuId, quantity: item.quantity })),
+                        total_price: total,
+                        status: 'pending' // Direct payment, so status is pending
+                    })
+                });
+                alert(`注文完了: ID ${response.id} お釣り: ${received - total}円`);
+                cart = [];
+                updateCart();
+            }
+
+            // Reset UI
             elements.paymentArea.classList.add('hidden');
-            elements.orderSubmitBtn.textContent = '注文送信';
+            elements.orderSubmitBtn.textContent = '支払いへ進む';
             loadHistory();
             if (currentMode === 'kitchen') loadOrders();
+
         } catch (error) {
-            console.error('注文作成エラー:', error);
+            console.error('支払い処理エラー:', error);
+            alert('支払い処理中にエラーが発生しました。');
         }
     }
+};
+
+// --- Mobile Order Lookup Logic ---
+elements.findOrderBtn.onclick = async () => {
+    const paymentNumber = elements.paymentNumberInput.value.trim();
+    if (!paymentNumber) {
+        alert('支払い番号を入力してください。');
+        return;
+    }
+
+    try {
+        const order = await fetchWithError(`/orders/by_payment_number/${paymentNumber}`);
+        fetchedMobileOrder = order;
+        displayFetchedOrder(order);
+    } catch (error) {
+        console.error('注文検索エラー:', error);
+        alert('指定された支払い番号の注文は見つかりませんでした。');
+        resetMobileOrderLookup();
+    }
+};
+
+function displayFetchedOrder(order) {
+    elements.mobileOrderDisplay.classList.remove('hidden');
+    elements.mobileOrderItems.innerHTML = order.order_items.map(item =>
+        `<div>${item.menu.name} x ${item.quantity}</div>`
+    ).join('');
+    elements.mobileOrderTotal.textContent = `合計: ${order.total_price}円`;
+
+    const statusText = getStatusText(order.status);
+    elements.mobileOrderStatus.innerHTML = `ステータス: <span class="status-${order.status}">${statusText}</span>`;
+
+    if (order.status === 'unpaid') {
+        elements.mobileOrderPayBtn.classList.remove('hidden');
+    } else {
+        elements.mobileOrderPayBtn.classList.add('hidden');
+    }
+}
+
+function resetMobileOrderLookup() {
+    fetchedMobileOrder = null;
+    elements.paymentNumberInput.value = '';
+    elements.mobileOrderDisplay.classList.add('hidden');
+    elements.mobileOrderItems.innerHTML = '';
+    elements.mobileOrderTotal.textContent = '';
+    elements.mobileOrderStatus.innerHTML = '';
+}
+
+elements.mobileOrderPayBtn.onclick = () => {
+    if (!fetchedMobileOrder) return;
+
+    // Clear the local cart to avoid confusion
+    cart = [];
+    updateCart();
+
+    // Use the main payment button's logic
+    elements.orderSubmitBtn.click();
 };
 // 注文履歴ロード
 async function loadHistory() {

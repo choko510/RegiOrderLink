@@ -1,17 +1,44 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy.orm import joinedload
 from sqlalchemy import func
 from ..database import get_db
 from ..models import Order as ModelOrder, OrderItem as ModelOrderItem, Menu as ModelMenu, Table as ModelTable
 from ..schemas import OrderCreate, Order, OrderItem, StatusUpdate, SalesByTime, RealtimeSales, MenuSales
-from ..websockets import notify_order_update
+from ..database import SessionLocal
+from ..websockets import notify_new_order, notify_order_update
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import func, extract
 from sqlalchemy import extract
 from typing import List
+import random
+import time
+import asyncio
 
 router = APIRouter()
+
+# 支払い番号で注文を取得する関数
+def get_order_by_payment_number(payment_number: str, db: Session):
+    order = db.query(ModelOrder).options(
+        joinedload(ModelOrder.order_items).joinedload(ModelOrderItem.menu)
+    ).filter(ModelOrder.payment_number == payment_number).first()
+    return order
+
+async def cancel_order_if_unpaid(order_id: int):
+    """15分後に注文が未払いであればキャンセルする"""
+    await asyncio.sleep(15 * 60)
+    db = SessionLocal()
+    try:
+        db_order = db.query(ModelOrder).filter(ModelOrder.id == order_id).first()
+        if db_order and db_order.status == 'unpaid':
+            db_order.status = 'cancelled'
+            db.commit()
+            db.refresh(db_order)
+            print(f"Order {order_id} has been cancelled due to non-payment.")
+            await notify_order_update(order_id, 'cancelled')
+    finally:
+        db.close()
+
 
 @router.get("/", response_model=list[Order])
 def get_orders(db: Session = Depends(get_db)):
@@ -21,6 +48,23 @@ def get_orders(db: Session = Depends(get_db)):
     for order in orders:
         order.order_items = order.order_items or []
     return orders
+
+@router.get("/by_payment_number/{payment_number}", response_model=Order)
+def get_order_by_payment_number_api(payment_number: str, db: Session = Depends(get_db)):
+    order = get_order_by_payment_number(payment_number, db)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    # 15分以上経過していて未払いの場合
+    if order.status == 'unpaid':
+        if datetime.utcnow() - order.created_at > timedelta(minutes=15):
+            order.status = 'cancelled'
+            db.commit()
+            db.refresh(order)
+            # WebSocketでの通知も検討
+
+    order.order_items = order.order_items or []
+    return order
 
 @router.get("/{table_id}", response_model=list[Order])
 def get_orders_by_table(table_id: int, db: Session = Depends(get_db)):
@@ -32,7 +76,7 @@ def get_orders_by_table(table_id: int, db: Session = Depends(get_db)):
     return orders
 
 @router.post("/", response_model=Order)
-async def create_order(order: OrderCreate, db: Session = Depends(get_db)):
+async def create_order(order: OrderCreate, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     # テーブル存在確認 (オプション)
     if order.table_id:
         table = db.query(ModelTable).filter(ModelTable.id == order.table_id).first()
@@ -52,8 +96,19 @@ async def create_order(order: OrderCreate, db: Session = Depends(get_db)):
 
     total_price = sum(menu_map[item.menu_id].price * item.quantity for item in order.order_items)
 
+    # 支払い番号生成
+    timestamp = int(time.time() * 100)
+    random_num = random.randint(100, 999)
+    payment_number = f"{timestamp}-{random_num}"
+
+
     # 注文作成
-    db_order = ModelOrder(table_id=order.table_id, total_price=total_price)
+    db_order = ModelOrder(
+        table_id=order.table_id,
+        total_price=total_price,
+        payment_number=payment_number,
+        status="unpaid"  # 初期ステータスをunpaidに
+    )
     db.add(db_order)
     db.commit()
     db.refresh(db_order)
@@ -65,13 +120,15 @@ async def create_order(order: OrderCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(db_order)
     
+    # 15分後にキャンセルするバックグラウンドタスクを追加
+    background_tasks.add_task(cancel_order_if_unpaid, db_order.id)
+
     # メニュー情報を含む注文を再クエリ
     full_order = db.query(ModelOrder).options(
         joinedload(ModelOrder.order_items).joinedload(ModelOrderItem.menu)
     ).filter(ModelOrder.id == db_order.id).first()
     
-    # WebSocket通知
-    await notify_order_update(db_order.id, is_new=True)
+await notify_order_update(db_order.id, is_new=True)
     
     return full_order
 
@@ -82,11 +139,22 @@ async def update_order_status(order_id: int, status_update: StatusUpdate, db: Se
     ).filter(ModelOrder.id == order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
+
+    original_status = order.status
     order.status = status_update.status
     db.commit()
     db.refresh(order)
     order.order_items = order.order_items or []
-    await notify_order_update(order_id)
+# Notify based on status change
+# （支払い済みになった注文は厨房では「新規注文」として扱う）
+if original_status == 'unpaid' and order.status == 'pending':
+    # newly paid -> treat as "new order" for the kitchen/front
+    await notify_new_order(order.id, order.status)
+else:
+    # otherwise it's a normal status update
+    # prefer passing the status so receivers can know the new state
+    await notify_order_update(order.id, order.status)
+
     return order
 
 @router.get("/sales/by-time", response_model=List[SalesByTime])

@@ -64,7 +64,10 @@ def get_order_by_payment_number_api(payment_number: str, db: Session = Depends(g
 
     # 15分以上経過していて未払いの場合
     if order.status == 'unpaid':
-        if datetime.now(JST) - order.created_at > timedelta(minutes=15):
+        created_at = order.created_at
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=JST)
+        if datetime.now(JST) - created_at > timedelta(minutes=15):
             order.status = 'cancelled'
             db.commit()
             db.refresh(order)

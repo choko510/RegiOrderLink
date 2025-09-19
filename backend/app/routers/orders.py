@@ -34,7 +34,10 @@ async def cancel_order_if_unpaid(order_id: int):
     try:
         db_order = db.query(ModelOrder).filter(ModelOrder.id == order_id).first()
         if db_order and db_order.status == 'unpaid':
-            if datetime.now(JST) - db_order.created_at > timedelta(minutes=15):
+            created_at = db_order.created_at
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=JST)
+            if datetime.now(JST) - created_at > timedelta(minutes=15):
                 db_order.status = 'cancelled'
                 db.commit()
                 db.refresh(db_order)

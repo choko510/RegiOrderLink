@@ -9,6 +9,8 @@ from ..database import SessionLocal
 from ..websockets import notify_new_order, notify_order_update
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import func, extract
+
+JST = timezone(timedelta(hours=9))
 from sqlalchemy import extract
 from typing import List
 import random
@@ -32,11 +34,12 @@ async def cancel_order_if_unpaid(order_id: int):
     try:
         db_order = db.query(ModelOrder).filter(ModelOrder.id == order_id).first()
         if db_order and db_order.status == 'unpaid':
-            db_order.status = 'cancelled'
-            db.commit()
-            db.refresh(db_order)
-            print(f"Order {order_id} has been cancelled due to non-payment.")
-            await notify_order_update(order_id, 'cancelled')
+            if datetime.now(JST) - db_order.created_at > timedelta(minutes=15):
+                db_order.status = 'cancelled'
+                db.commit()
+                db.refresh(db_order)
+                print(f"Order {order_id} has been cancelled due to non-payment.")
+                await notify_order_update(order_id, 'cancelled')
     finally:
         db.close()
 
@@ -58,7 +61,7 @@ def get_order_by_payment_number_api(payment_number: str, db: Session = Depends(g
 
     # 15分以上経過していて未払いの場合
     if order.status == 'unpaid':
-        if datetime.utcnow() - order.created_at > timedelta(minutes=15):
+        if datetime.now(JST) - order.created_at > timedelta(minutes=15):
             order.status = 'cancelled'
             db.commit()
             db.refresh(order)
@@ -184,9 +187,8 @@ async def get_sales_by_time(
     end_date = datetime.fromisoformat(end).date()
     
     # 日本時間で開始日時と終了日時を設定（UTC+9）
-    jst = timezone(timedelta(hours=9))
-    start_datetime = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=jst)
-    end_datetime = datetime.combine(end_date, datetime.max.time()).replace(tzinfo=jst)
+    start_datetime = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=JST)
+    end_datetime = datetime.combine(end_date, datetime.max.time()).replace(tzinfo=JST)
     
     # 完了した注文のみ集計
     sales_data = db.query(
@@ -208,44 +210,37 @@ async def get_sales_by_time(
 
 @router.get("/sales/realtime", response_model=RealtimeSales)
 async def get_realtime_sales(db: Session = Depends(get_db)):
-    # UTCで現在時刻を取得
-    now_utc = datetime.utcnow()
+    now_jst = datetime.now(JST)
     
-    # 日本時間での今日の日付を取得
-    jst = timezone(timedelta(hours=9))
-    now_jst = datetime.now(jst)
-    
-    # JSTでの今日の開始時刻（00:00）を定義し、それをUTCに変換
+    # JSTでの今日の開始時刻（00:00）
     today_start_jst = now_jst.replace(hour=0, minute=0, second=0, microsecond=0)
-    today_start_utc = today_start_jst.astimezone(timezone.utc)
     
-    # JSTでの明日の開始時刻（00:00）を定義し、それをUTCに変換
+    # JSTでの明日の開始時刻（00:00）
     tomorrow_start_jst = today_start_jst + timedelta(days=1)
-    tomorrow_start_utc = tomorrow_start_jst.astimezone(timezone.utc)
 
-    # 過去1時間と過去30分の基準時刻 (UTC)
-    one_hour_ago_utc = now_utc - timedelta(hours=1)
-    thirty_minutes_ago_utc = now_utc - timedelta(minutes=30)
+    # 過去1時間と過去30分の基準時刻 (JST)
+    one_hour_ago_jst = now_jst - timedelta(hours=1)
+    thirty_minutes_ago_jst = now_jst - timedelta(minutes=30)
     
     # 今日の総売上 (完了注文)
     daily_total = db.query(func.sum(ModelOrder.total_price)).filter(
         ModelOrder.status == 'completed',
-        ModelOrder.created_at >= today_start_utc,
-        ModelOrder.created_at < tomorrow_start_utc
+        ModelOrder.created_at >= today_start_jst,
+        ModelOrder.created_at < tomorrow_start_jst
     ).scalar() or 0.0
     
     # 過去1時間の売上
     past_hour_total = db.query(func.sum(ModelOrder.total_price)).filter(
         ModelOrder.status == 'completed',
-        ModelOrder.created_at >= one_hour_ago_utc,
-        ModelOrder.created_at <= now_utc
+        ModelOrder.created_at >= one_hour_ago_jst,
+        ModelOrder.created_at <= now_jst
     ).scalar() or 0.0
     
     # 過去30分の売上
     past_30min_total = db.query(func.sum(ModelOrder.total_price)).filter(
         ModelOrder.status == 'completed',
-        ModelOrder.created_at >= thirty_minutes_ago_utc,
-        ModelOrder.created_at <= now_utc
+        ModelOrder.created_at >= thirty_minutes_ago_jst,
+        ModelOrder.created_at <= now_jst
     ).scalar() or 0.0
     
     # 今日の商品ごとの売上
@@ -258,8 +253,8 @@ async def get_realtime_sales(db: Session = Depends(get_db)):
     ).join(ModelOrder, ModelOrderItem.order_id == ModelOrder.id
     ).filter(
         ModelOrder.status == 'completed',
-        ModelOrder.created_at >= today_start_utc,
-        ModelOrder.created_at < tomorrow_start_utc
+        ModelOrder.created_at >= today_start_jst,
+        ModelOrder.created_at < tomorrow_start_jst
     ).group_by(
         ModelOrderItem.menu_id, ModelMenu.name, ModelMenu.price
     ).order_by(func.sum(ModelOrderItem.quantity * ModelMenu.price).desc()).all()
